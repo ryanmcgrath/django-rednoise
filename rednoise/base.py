@@ -14,13 +14,20 @@ from django.contrib.staticfiles import finders
 from whitenoise.django import DjangoWhiteNoise
 
 A404 = '404 NOT FOUND'
+A301 = '301 Moved Permanently'
 PI = 'PATH_INFO'
 
 
 class DjangoRedNoise(DjangoWhiteNoise):
     rednoise_config_attrs = [
         'should_serve_static',
-        'should_serve_media'
+        'should_serve_media',
+        'root_aliases'
+    ]
+
+    root_aliases = [
+        '/favicon.ico', '/sitemap.xml',
+        '/robots.txt', '/humans.txt'
     ]
 
     debug = False
@@ -36,6 +43,13 @@ class DjangoRedNoise(DjangoWhiteNoise):
         self.static_files = {}
         self.media_files = {}
 
+        # These are commonly used assets that get requested from the root;
+        # we catch them and redirect to the prefixed static url in production
+        # or just serve them in development.
+        #
+        # see also: self.find_root_aliases()
+        self._root_aliases = {}
+
         # Allow settings to override default attributes
         # We check for existing WHITENOISE_{} stuff to be compatible, but then
         # add a few RedNoise specific ones in order to not be too confusing.
@@ -48,9 +62,13 @@ class DjangoRedNoise(DjangoWhiteNoise):
         except AttributeError:
             pass
 
+        if self.should_serve_media:
+            self.media_root, self.media_prefix = self.get_structure('MEDIA')
+
         # Grab the various roots we care about.
         if self.should_serve_static:
             self.static_root, self.static_prefix = self.get_structure('STATIC')
+
             try:
                 setattr(self, 'staticfiles_dirs', getattr(
                     settings, 'STATICFILES_DIRS'
@@ -58,23 +76,48 @@ class DjangoRedNoise(DjangoWhiteNoise):
             except AttributeError:
                 pass
 
-        if self.should_serve_media:
-            self.media_root, self.media_prefix = self.get_structure('MEDIA')
+            self.make_root_aliases()
+
+    def make_root_aliases(self):
+        """For any static files that should be loading from the "root" -
+        (e.g, robots.txt, favicon.ico, humans.txt, sitemap.xml, etc) we want
+        to catch them and redirect to the actual static file. This basically
+        just computes the necessary redirect paths for use in __call__.
+
+        Users can specify overrides via REDNOISE_ROOT_ALIASES in settings.py.
+
+        We do this because the favicon gets requested a lot, and in really
+        weird circumstances sometimes. I don't like making Django deal with it
+        just to serve a 301, so we just do it here. If the user lacks a file,
+        it's just a proper 404 ultimately.
+        """
+        try:
+            static_url = getattr(settings, 'STATIC_URL')
+        except:
+            raise ImproperlyConfigured('STATIC_URL is not configured.')
+
+        for alias in self.root_aliases:
+            self._root_aliases[alias] = static_url + alias.replace('/', '')
 
     def __call__(self, environ, start_response):
         """Checks to see if a request is inside our designated media or static
         configurations.
         """
-        if self.should_serve_static and self.is_static(environ[PI]):
-            asset = self.load_static_file(environ[PI])
+        path = environ[PI]
+        if path in self.root_aliases:
+            start_response(A301, [('Location', self._root_aliases[path])])
+            return []
+
+        if self.should_serve_static and self.is_static(path):
+            asset = self.load_static_file(path)
             if asset is not None:
                 return self.serve(asset, environ, start_response)
             else:
                 start_response(A404, [('Content-Type', 'text/plain')])
                 return ['Not Found']
 
-        if self.should_serve_media and self.is_media(environ[PI]):
-            asset = self.load_media_file(environ[PI])
+        if self.should_serve_media and self.is_media(path):
+            asset = self.load_media_file(path)
             if asset is not None:
                 return self.serve(asset, environ, start_response)
             else:
@@ -144,31 +187,40 @@ class DjangoRedNoise(DjangoWhiteNoise):
         handles creating of a File object per each valid static/media request.
         This is then cached for lookup later if need-be.
 
-        If REDNOISE_DEBUG is True, then this will also scan extra
-        STATICFILES_DIRS.
-
         See also: self.add_media_file()
         """
-        file_path = None
-        is_file = False
-        if self.debug:
-            result = finders.find(path.replace(self.static_prefix, ''))
-            if result:
-                is_file = True
-                file_path = result
+        file_path = self.find_static_file(path)
 
-        if not is_file:  # Account for stuff like admin, etc
+        if file_path:
+            files = {}
+            files[path] = self.get_static_file(file_path, path)
+
+            if not self.debug:
+                self.find_gzipped_alternatives(files)
+
+            self.static_files.update(files)
+
+    def find_static_file(self, path):
+        """Finds a static file; if DEBUG mode is set for Django, it will
+        mimic Django's default static files behavior and serve
+        (and not cache) the file. If DEBUG mode is False, it will essentially
+        mimic the default WhiteNoise behavior.
+        """
+        file_path = None
+        if self.debug:
+            file_path = finders.find(path.replace(self.static_prefix, ''))
+
+        # The immediate assumption would be to just only do this in non-DEBUG
+        # scenarios, but this here allows us to fall through to ROOT in DEBUG.
+        if file_path is None:
             file_path = ('%s/%s' % (
                 self.static_root, path.replace(self.static_prefix, '')
             )).replace('\\', '/')
-            is_file = isfile(file_path)
 
-        if is_file:
-            files = {}
-            files[path] = self.get_static_file(file_path, path)
-            if not self.debug:
-                self.find_gzipped_alternatives(files)
-            self.static_files.update(files)
+            if not isfile(file_path):
+                return None
+
+        return file_path
 
     def load_static_file(self, path):
         """Retrieves a static file, optimizing along the way.

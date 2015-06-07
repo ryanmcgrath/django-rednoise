@@ -12,7 +12,7 @@ def read(*path):
 
 setup(
     name='django-rednoise',
-    version='1.0.2',
+    version='1.0.3',
     author='Ryan McGrath',
     author_email='ryan@venodesigns.net',
     url='https://github.com/ryanmcgrath/django-rednoise/',
