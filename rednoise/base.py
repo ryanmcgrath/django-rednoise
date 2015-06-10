@@ -208,13 +208,13 @@ class DjangoRedNoise(DjangoWhiteNoise):
         """
         file_path = None
         if self.debug:
-            file_path = finders.find(path.replace(self.static_prefix, ''))
+            file_path = finders.find(path.replace(self.static_prefix, '', 1))
 
         # The immediate assumption would be to just only do this in non-DEBUG
         # scenarios, but this here allows us to fall through to ROOT in DEBUG.
         if file_path is None:
             file_path = ('%s/%s' % (
-                self.static_root, path.replace(self.static_prefix, '')
+                self.static_root, path.replace(self.static_prefix, '', 1)
             )).replace('\\', '/')
 
             if not isfile(file_path):
@@ -249,7 +249,7 @@ class DjangoRedNoise(DjangoWhiteNoise):
         nature, so we have separate methods.
         """
         file_path = ('%s/%s' % (
-            self.media_root, path.replace(self.media_prefix, '')
+            self.media_root, path.replace(self.media_prefix, '', 1)
         )).replace('\\', '/')
         if isfile(file_path):
             files = {}
