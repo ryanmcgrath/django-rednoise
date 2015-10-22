@@ -114,7 +114,7 @@ class DjangoRedNoise(DjangoWhiteNoise):
                 return self.serve(asset, environ, start_response)
             else:
                 start_response(A404, [('Content-Type', 'text/plain')])
-                return ['Not Found']
+                return [b'Not Found']
 
         if self.should_serve_media and self.is_media(path):
             asset = self.load_media_file(path)
@@ -122,7 +122,7 @@ class DjangoRedNoise(DjangoWhiteNoise):
                 return self.serve(asset, environ, start_response)
             else:
                 start_response(A404, [('Content-Type', 'text/plain')])
-                return ['Not Found']
+                return [b'Not Found']
 
         return self.application(environ, start_response)
 
