@@ -1,3 +1,6 @@
+# Notice
+If you've used Django Rednoise before, thanks! I'm glad it was helpful. Unfortunately, this project was built for Whitenoise < 2, and I've simply never found the time to update it, hence why I'm archiving it. If you'd like to, feel free to fork it and take ownership of it. :)
+
 RedNoise
 ==========
 Django as a framework is great, but file handling within any setup has never been particularly fun to configure. **[WhiteNoise](https://whitenoise.readthedocs.org/)** makes this, to borrow its own term, "radically simplified", and for the most part I've found it to be an ideal solution - though there are a few things I found myself wanting from time to time.
